@@ -2,15 +2,22 @@ services:
   paymatch:
     build: .
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8000:80"
     environment:
-      PAYMATCH_DB: /data/paymatch.sqlite3
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      APP_NAME: PayMatch
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY:?Generate an APP_KEY and put it in .env}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /data/paymatch.sqlite
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      LOG_CHANNEL: stderr
     volumes:
       - paymatch_data:/data
     restart: unless-stopped
+
 volumes:
   paymatch_data:

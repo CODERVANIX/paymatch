@@ -1,25 +1,26 @@
-# PayMatch
+# PayMatch 2
 
-PayMatch is an open source, self-hosted payment verification workflow for sellers who receive manual bank transfers. It records payable orders, imports bank statement CSVs, finds exact candidate matches, flags duplicates and unmatched credits, and records who authorized dispatch.
+PayMatch is an open source, self-hosted bank transfer review workflow. Sellers create orders, import bank CSV transactions, review exact match candidates, and record who approved dispatch. Version 2 uses **Laravel 13 and Filament 5**, with a minimal operations UI.
 
-**A screenshot is never payment evidence in PayMatch.** The app has no screenshot verification flow. An imported CSV can be changed by whoever holds the file, so even a candidate match does not confirm receipt. An authorized approver must check the transaction against the bank's official record before releasing dispatch. The software records that decision; it does not independently authenticate a bank export.
+**A screenshot can never verify a payment.** PayMatch has no screenshot verification flow. An imported CSV is user supplied and can be changed; a candidate match is not proof of receipt. An authorized approver must check the bank's official record before releasing dispatch. PayMatch records that human decision and does not authenticate a bank export itself.
 
-## Quick start with Docker
+## Docker quick start
 
 1. Copy `.env.example` to `.env`.
-2. Set a random `SECRET_KEY` of at least 32 characters and a unique admin password of at least 12 characters. For example, generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+2. Generate a key with `php artisan key:generate --show` if PHP and Composer are installed, or `openssl rand -base64 32` and prefix the result with `base64:`. Set `APP_KEY` in `.env`.
 3. Run `docker compose up --build -d`.
-4. Open <http://localhost:8000> and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
+4. Run `docker compose exec paymatch php artisan paymatch:create-admin` and enter the first administrator's name, email and password.
+5. Open <http://localhost:8000/admin>.
 
-The Compose example binds to `127.0.0.1` so it is only reachable on the same machine. To serve a team, place it behind HTTPS and an authenticated reverse proxy, set `COOKIE_SECURE=true`, and configure backups for the `paymatch_data` Docker volume. Never put `.env` or bank CSVs in Git.
+The Compose example listens on `127.0.0.1`. For access from another machine, put PayMatch behind HTTPS, set `APP_URL` to that HTTPS URL, and arrange backups of the `paymatch_data` volume. Never commit `.env` or real bank CSVs.
 
 ## Local development
 
-Create a Python 3.12 virtual environment, install `requirements.txt`, set `SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `PAYMATCH_DB`, then run `python app.py`. The local development server listens on `127.0.0.1:8000`.
+Requires PHP 8.3+, Composer, and the PHP `intl`, `pdo_sqlite`, and `zip` extensions. Run `composer install`, copy `.env.example` to `.env`, `php artisan key:generate`, create `database/database.sqlite`, then `php artisan migrate`. Create an administrator with `php artisan paymatch:create-admin` and run `php artisan serve`. Open <http://127.0.0.1:8000/admin>.
 
 ## CSV format
 
-PayMatch expects UTF-8 CSV with these headers, in any order:
+Use a UTF-8 CSV with these columns (in any order):
 
 ```csv
 date,transaction_id,reference,amount,type
@@ -27,33 +28,23 @@ date,transaction_id,reference,amount,type
 2026-11-02,BANK-4822,Outgoing payment,1500.00,debit
 ```
 
-Only `credit` rows are imported. Amounts are positive LKR values with up to two decimal places. Dates use `YYYY-MM-DD`. The importer accepts up to 5,000 rows and 2 MB. The account label is chosen by the importer and forms part of duplicate detection. Reimporting the same file for that account is rejected. Repeated transaction IDs on that account are flagged.
+Only credit rows are imported. Amounts are positive LKR values with up to two decimals. Dates use `YYYY-MM-DD`. A file can contain up to 5,000 rows and 2 MB. Reimporting the same file for the same account is rejected; repeated bank transaction IDs for that account are flagged as duplicates. Bank formats vary, so map an officially obtained export into this schema while preserving its transaction ID and reference. The app never asks for bank login or customer banking credentials.
 
-Bank formats vary. Convert your bank's *officially obtained* export into this format offline, preserving its transaction ID, date, amount and transfer reference. The CSV and account label are supplied by a user; PayMatch cannot prove they came from a bank. There is no bank-login scraping and the app never asks for customer banking credentials.
+## Workflow and permissions
 
-## Workflow
+1. An **operator** creates an order with a unique code and expected LKR amount. The payer includes the code in the transfer reference.
+2. An operator imports a CSV. PayMatch proposes a candidate only when a credit has the exact amount and the order code as a whole token in its reference, with a unique match. Duplicates and ambiguous transfers remain unreleased.
+3. An **approver** checks the transaction in the bank's official record, confirms that check, and writes an approval note. Only this action marks dispatch **Released**. An **admin** can perform both roles and manage staff.
+4. Import, candidate, revocation, user creation, and release events appear in the audit history. The release record stores the approver, time, note, and linked transaction.
 
-1. An **operator** creates an order with a unique code and expected LKR amount. The customer includes that code in the transfer reference.
-2. An operator imports an official bank CSV. PayMatch links a transaction only when the amount exactly equals the order amount and the order code appears as a whole token in the reference. A candidate is created only if the match is unique. All other credits remain unmatched or flagged as duplicates.
-3. An **approver** checks the candidate in the bank's official record and records a note and explicit dispatch decision. Only then is the order marked **Released**. Admins can perform both roles.
-4. The audit screen records imports, matches, releases, sign-ins, and team changes, with actor and UTC time.
+The audit log is application level and is not tamper proof against a database administrator. PayMatch is designed for one organization per deployment. It does not support partial payments, refunds, multiple currencies, direct bank APIs, or payment provider integrations. `Released` is a dispatch decision, not an accounting settlement status.
 
-The audit log is application level and is not tamper proof against a database administrator. The current MVP has no refund, partial-payment, multi-currency, bank API, or payment-provider integration. It is intended for one organization per deployment. Do not use `Released` as an accounting settlement status.
+## Upgrade from v1
 
-## Security and operations
+Version 2 is a Laravel rewrite. The v1 Flask source remains available at tag [`v1.0.0`](https://github.com/CODERVANIX/paymatch/tree/v1.0.0). **The v1 SQLite database and password hashes are not automatically migrated.** Back up your v1 database and deploy v2 with a new volume and administrator. Do not point v2 at a v1 database. If you need to carry production data forward, build and verify a controlled migration before switching dispatch operations.
 
-- Passwords use salted `scrypt` hashes. Sessions are signed, HTTP-only, and SameSite Lax; modifying forms require CSRF tokens.
-- Keep the service behind HTTPS for network access. Set `COOKIE_SECURE=true` only when clients connect through HTTPS.
-- Restrict who can import bank data or approve dispatch. Give each team member a separate login.
-- Back up the persistent SQLite volume. SQLite WAL mode is enabled; copy a consistent database snapshot rather than copying only the `.sqlite3` file while the app is live.
-- This MVP has no password reset, login rate limiting, immutable audit store, or direct bank integration. Add these before exposing it to the public internet or using it for high-volume operations.
+## Security and tests
 
-## Tests
+Laravel handles password hashing, sessions, and CSRF protection. Use a strong administrator password, individual staff accounts, HTTPS for network access, and database backups. This MVP has no bank integration or immutable audit store; evaluate it for your own operational risk.
 
-Run `python -m unittest discover -s tests -v`. The tests exercise matching, ambiguous imports, duplicate IDs, permissions, and human release.
-
-## Contributing
-
-Issues and pull requests are welcome. Start with a reproducible case and avoid including real customer or bank data. Keep the rule that a screenshot cannot set payment or dispatch status. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Licensed under MIT. This is an early MVP; evaluate and adapt it for your own operations before relying on it.
+Run `php artisan test` for workflow and access tests. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under MIT.

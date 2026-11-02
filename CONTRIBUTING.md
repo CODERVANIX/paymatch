@@ -5,8 +5,8 @@ Thanks for helping. Open an issue describing the workflow and data format before
 ## Development checks
 
 ```sh
-python -m unittest discover -s tests -v
-python -m py_compile app.py
+composer install
+php artisan test
 ```
 
 Changes to reconciliation should include a test for the state transition and its audit event. Dispatch must continue to require an authorized human decision backed by an official bank record. Keep CSV import distinct from bank authentication.
