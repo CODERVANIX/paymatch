@@ -1,0 +1,16 @@
+services:
+  paymatch:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      PAYMATCH_DB: /data/paymatch.sqlite3
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - paymatch_data:/data
+    restart: unless-stopped
+volumes:
+  paymatch_data:
