@@ -31,4 +31,16 @@ class PanelAccessTest extends TestCase
         $this->actingAs($approver)->get('/admin/payment-orders/create')->assertForbidden();
         $this->actingAs($approver)->get('/admin/users')->assertForbidden();
     }
+
+    public function test_admin_can_render_the_operations_lists_with_intl(): void
+    {
+        if (! extension_loaded('intl')) {
+            $this->markTestSkipped('Filament list pagination requires the intl extension.');
+        }
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        foreach (['payment-orders', 'bank-transactions', 'bank-imports', 'audit-events', 'users'] as $path) {
+            $this->actingAs($admin)->get("/admin/{$path}")->assertOk();
+        }
+    }
 }
