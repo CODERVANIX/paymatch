@@ -5,7 +5,7 @@ import unittest
 
 _tmp = tempfile.TemporaryDirectory()
 os.environ["PAYMATCH_DB"] = os.path.join(_tmp.name, "test.sqlite3")
-os.environ["SECRET_KEY"] = "test-only-secret-key"
+os.environ["SECRET_KEY"] = "test-only-secret-key-with-32-characters"
 os.environ["ADMIN_EMAIL"] = "admin@example.com"
 os.environ["ADMIN_PASSWORD"] = "very-long-test-password"
 
@@ -63,6 +63,13 @@ class WorkflowTests(unittest.TestCase):
         self.import_csv("2026-11-02,B-1,PM-1001,25000.00,credit\n")
         self.assertEqual(self.status(), "candidate")
         self.import_csv("2026-11-03,B-2,PM-1001,25000.00,credit\n", "next.csv")
+        self.assertEqual(self.status(), "awaiting_transfer")
+
+    def test_second_order_code_revokes_candidate(self):
+        self.create_order()
+        self.import_csv("2026-11-02,B-1,PM-1001 PM-1002,25000.00,credit\n")
+        self.assertEqual(self.status(), "candidate")
+        self.create_order("PM-1002")
         self.assertEqual(self.status(), "awaiting_transfer")
 
     def test_duplicate_ids_and_nonexact_amount(self):

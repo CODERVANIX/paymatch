@@ -7,7 +7,7 @@ PayMatch is an open source, self-hosted payment verification workflow for seller
 ## Quick start with Docker
 
 1. Copy `.env.example` to `.env`.
-2. Set a random `SECRET_KEY` and a unique admin password of at least 12 characters. For example, generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+2. Set a random `SECRET_KEY` of at least 32 characters and a unique admin password of at least 12 characters. For example, generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 3. Run `docker compose up --build -d`.
 4. Open <http://localhost:8000> and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 

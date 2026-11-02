@@ -9,11 +9,11 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-{% if current_user %}
+{% if current_user %}<a class="skip-link" href="#main-content">Skip to content</a>
 <div class="shell">
   <aside class="sidebar" id="sidebar">
-    <a class="brand" href="{{ url_for('overview') }}"><span class="brand-mark"><span></span><span></span></span><span>PayMatch</span></a>
-    <div class="workspace-label">Workspace</div><div class="workspace">Local workspace <small>Self hosted</small></div>
+    <a class="brand" href="{{ url_for('overview') }}"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>PayMatch</span></a>
+    <div class="workspace-label">Workspace</div><div class="workspace">PayMatch <small>Local workspace</small></div>
     <nav aria-label="Main navigation">
       <a {% if request.endpoint == 'overview' %}aria-current="page"{% endif %} href="{{ url_for('overview') }}">Overview</a>
       <a {% if request.endpoint == 'orders' %}aria-current="page"{% endif %} href="{{ url_for('orders') }}">Orders</a>
@@ -26,7 +26,7 @@
     </div>
   </aside>
   <div class="main-frame">
-    <header class="topbar"><button class="menu-button" type="button" onclick="document.body.classList.toggle('menu-open')" aria-label="Toggle menu" aria-controls="sidebar">☰</button><span>Payment verification workspace</span><span class="topbar-right">Bank records → review → release</span></header>
+    <header class="topbar"><button class="menu-button" type="button" onclick="document.body.classList.toggle('menu-open');this.setAttribute('aria-expanded',document.body.classList.contains('menu-open'))" aria-label="Toggle menu" aria-controls="sidebar" aria-expanded="false">☰</button><span>PayMatch / {{ self.title() }}</span><span class="topbar-right">{{ current_user.role|capitalize }} workspace</span></header>
     <main class="sheet" id="main-content">
       {% with messages = get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
       {% block content %}{% endblock %}

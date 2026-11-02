@@ -14,7 +14,10 @@ from functools import wraps
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-this-secret")
+secret_key = os.environ.get("SECRET_KEY", "")
+if len(secret_key) < 32:
+    raise RuntimeError("Set SECRET_KEY to a random value of at least 32 characters")
+app.secret_key = secret_key
 app.config.update(
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     SESSION_COOKIE_HTTPONLY=True,
@@ -93,9 +96,11 @@ def init_db():
         if not conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             email, password = os.environ.get("ADMIN_EMAIL"), os.environ.get("ADMIN_PASSWORD")
             if email and password and len(password) >= 12:
-                conn.execute("INSERT INTO users(email,password_hash,role,created_at) VALUES(?,?,?,?)",
+                conn.execute("INSERT OR IGNORE INTO users(email,password_hash,role,created_at) VALUES(?,?,?,?)",
                              (email.strip().lower(), hash_password(password), "admin", now()))
                 conn.commit()
+            else:
+                raise RuntimeError("Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) for first startup")
 
 
 def hash_password(password):
@@ -195,11 +200,15 @@ def reconcile():
     # considering any new links. A released order is never silently changed.
     for order in conn.execute("SELECT * FROM orders WHERE status='candidate'").fetchall():
         candidate = conn.execute("SELECT id FROM transactions WHERE id=?", (order["matched_transaction_id"],)).fetchone()
+        linked = conn.execute("SELECT reference FROM transactions WHERE id=?", (order["matched_transaction_id"],)).fetchone()
+        rival_orders = [other for other in conn.execute("SELECT code FROM orders WHERE amount_cents=? AND id<>?",
+            (order["amount_cents"], order["id"])).fetchall()
+            if linked and other["code"] in re.findall(r"[A-Z0-9_-]+", linked["reference"].upper())]
         rivals = [tx for tx in conn.execute("""SELECT id,reference FROM transactions
             WHERE amount_cents=? AND duplicate_of IS NULL AND id<>?""",
             (order["amount_cents"], order["matched_transaction_id"])).fetchall()
             if order["code"] in re.findall(r"[A-Z0-9_-]+", tx["reference"].upper())]
-        if not candidate or rivals:
+        if not candidate or rivals or rival_orders:
             conn.execute("UPDATE transactions SET matched_order_id=NULL WHERE id=?", (order["matched_transaction_id"],))
             conn.execute("UPDATE orders SET status='awaiting_transfer',matched_transaction_id=NULL WHERE id=?", (order["id"],))
             audit(None, "candidate_revoked", "order", order["id"], "New bank records made this match ambiguous")
@@ -284,6 +293,13 @@ def release(order_id):
     if conflicting:
         conn.rollback()
         abort(409, "More than one bank record matches this order; dispatch is blocked.")
+    linked = conn.execute("SELECT reference FROM transactions WHERE id=?", (order["matched_transaction_id"],)).fetchone()
+    competing_orders = [other for other in conn.execute("SELECT code FROM orders WHERE amount_cents=? AND id<>?",
+        (order["amount_cents"], order_id)).fetchall()
+        if other["code"] in re.findall(r"[A-Z0-9_-]+", linked["reference"].upper())]
+    if competing_orders:
+        conn.rollback()
+        abort(409, "The bank reference also names another order at this amount; dispatch is blocked.")
     conn.execute("UPDATE orders SET status='released', released_by=?, released_at=?, release_note=? WHERE id=?",
                  (g.user["id"], now(), note, order_id))
     audit(g.user["id"], "dispatch_released", "order", order_id, note)
